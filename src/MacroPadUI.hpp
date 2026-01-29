@@ -103,12 +103,16 @@ private:
     // Needs full redraw flag
     bool _needsFullRedraw;
 
+    // Bluetooth status cache
+    bool _btConnected;
+
 public:
     MacroPadUI(LGFX* tft, Profile* profiles, int profileCount)
         : _tft(tft), _profiles(profiles), _profileCount(profileCount),
           _currentProfileIndex(0), _lastTouchX(0), _lastTouchY(0),
           _lastTouchTime(0), _touchActive(false), _touchStartX(0), _touchStartY(0),
-          _macroCallback(nullptr), _profileChangeCallback(nullptr), _needsFullRedraw(true)
+            _macroCallback(nullptr), _profileChangeCallback(nullptr), _needsFullRedraw(true),
+            _btConnected(false)
     {
         // Pre-calculate button positions
         for (int row = 0; row < GRID_ROWS; row++) {
@@ -135,6 +139,7 @@ public:
     }
 
     void setBluetoothConnected(bool connected) {
+        _btConnected = connected;
         drawBluetoothStatus(connected);
     }
 
@@ -197,8 +202,8 @@ public:
         // Divider line
         _tft->drawFastHLine(0, HEADER_HEIGHT - 1, SCREEN_WIDTH, COLOR_DIVIDER);
 
-        // Bluetooth status placeholder (will be updated by setBluetoothConnected)
-        drawBluetoothStatus(false);
+        // Bluetooth status (persisted across redraws)
+        drawBluetoothStatus(_btConnected);
     }
 
     void drawBluetoothStatus(bool connected) {
