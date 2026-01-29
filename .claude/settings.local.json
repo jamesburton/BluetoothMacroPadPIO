@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir \"c:\\\\Development\\\\PlatformIO\\\\SnakePIO\" /s /b)",
+      "Bash(pio run)",
+      "WebSearch"
+    ]
+  }
+}

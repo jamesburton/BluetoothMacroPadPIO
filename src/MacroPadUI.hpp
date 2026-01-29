@@ -15,15 +15,13 @@
 #define FOOTER_HEIGHT   40
 #define GRID_AREA_HEIGHT (SCREEN_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT)
 
-// Grid layout
-#define BUTTON_WIDTH    110
-#define BUTTON_HEIGHT   90
-#define BUTTON_SPACING_X 10
-#define BUTTON_SPACING_Y 10
-#define GRID_TOTAL_WIDTH  (GRID_COLS * BUTTON_WIDTH + (GRID_COLS - 1) * BUTTON_SPACING_X)
-#define GRID_TOTAL_HEIGHT (GRID_ROWS * BUTTON_HEIGHT + (GRID_ROWS - 1) * BUTTON_SPACING_Y)
-#define GRID_START_X    ((SCREEN_WIDTH - GRID_TOTAL_WIDTH) / 2)
-#define GRID_START_Y    (HEADER_HEIGHT + ((GRID_AREA_HEIGHT - GRID_TOTAL_HEIGHT) / 2))
+// Grid layout (responsive per-profile)
+#define GRID_PADDING_X 10
+#define GRID_PADDING_Y 10
+#define BUTTON_SPACING_X 6
+#define BUTTON_SPACING_Y 6
+#define GRID_AVAILABLE_WIDTH  (SCREEN_WIDTH - (GRID_PADDING_X * 2))
+#define GRID_AVAILABLE_HEIGHT (GRID_AREA_HEIGHT - (GRID_PADDING_Y * 2))
 
 // Status bar
 #define STATUS_BAR_Y    5
@@ -114,19 +112,13 @@ public:
             _macroCallback(nullptr), _profileChangeCallback(nullptr), _needsFullRedraw(true),
             _btConnected(false)
     {
-        // Pre-calculate button positions
-        for (int row = 0; row < GRID_ROWS; row++) {
-            for (int col = 0; col < GRID_COLS; col++) {
-                int idx = row * GRID_COLS + col;
-                _buttonX[idx] = GRID_START_X + col * (BUTTON_WIDTH + BUTTON_SPACING_X);
-                _buttonY[idx] = GRID_START_Y + row * (BUTTON_HEIGHT + BUTTON_SPACING_Y);
-            }
-        }
+        updateButtonLayout();
     }
 
     void init() {
         _tft->setTextSize(1);
         _tft->setFont(&fonts::FreeSans9pt7b);
+        updateButtonLayout();
         drawScreen();
     }
 
@@ -155,6 +147,7 @@ public:
         if (index >= 0 && index < _profileCount && index != _currentProfileIndex) {
             _currentProfileIndex = index;
             _needsFullRedraw = true;
+            updateButtonLayout();
             drawScreen();
 
             if (_profileChangeCallback) {
@@ -231,24 +224,29 @@ public:
 
         // Draw all buttons
         Profile& p = _profiles[_currentProfileIndex];
-        for (int i = 0; i < BUTTON_COUNT; i++) {
+        for (int i = 0; i < activeButtonCount(); i++) {
             drawButton(i, p.buttons[i], false);
         }
     }
 
     void drawButton(int index, const Macro& macro, bool pressed) {
+        if (macro.type == MACRO_TYPE_NONE && (!macro.label || strlen(macro.label) == 0)) {
+            return;
+        }
         int16_t x = _buttonX[index];
         int16_t y = _buttonY[index];
+        int16_t bw = buttonWidth();
+        int16_t bh = buttonHeight();
 
         // Button color
         uint16_t bgColor = pressed ? macro.pressColor : macro.color;
 
         // Draw button background with rounded corners effect (simulated with rectangle)
-        _tft->fillRoundRect(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, 8, bgColor);
+        _tft->fillRoundRect(x, y, bw, bh, 8, bgColor);
 
         // Draw border
         uint16_t borderColor = pressed ? COLOR_WHITE : COLOR_DARK_GRAY;
-        _tft->drawRoundRect(x, y, BUTTON_WIDTH, BUTTON_HEIGHT, 8, borderColor);
+        _tft->drawRoundRect(x, y, bw, bh, 8, borderColor);
 
         // Draw label
         if (macro.label && strlen(macro.label) > 0) {
@@ -257,13 +255,13 @@ public:
             _tft->setTextDatum(middle_center);
 
             // Main label
-            _tft->drawString(macro.label, x + BUTTON_WIDTH / 2, y + BUTTON_HEIGHT / 2 - 10);
+            _tft->drawString(macro.label, x + bw / 2, y + bh / 2 - 10);
 
             // Sublabel (shortcut)
             if (macro.sublabel && strlen(macro.sublabel) > 0) {
                 _tft->setFont(&fonts::FreeSans9pt7b);
                 _tft->setTextColor(BTN_COLOR_SUBTEXT);
-                _tft->drawString(macro.sublabel, x + BUTTON_WIDTH / 2, y + BUTTON_HEIGHT / 2 + 12);
+                _tft->drawString(macro.sublabel, x + bw / 2, y + bh / 2 + 12);
             }
         }
     }
@@ -298,13 +296,72 @@ public:
     }
 
     void highlightButton(int index, bool pressed) {
-        if (index >= 0 && index < BUTTON_COUNT) {
+        if (index >= 0 && index < activeButtonCount()) {
             Profile& p = _profiles[_currentProfileIndex];
             drawButton(index, p.buttons[index], pressed);
         }
     }
 
 private:
+    int gridRows() const {
+        int rows = _profiles[_currentProfileIndex].gridRows;
+        return rows > 0 ? rows : 1;
+    }
+
+    int gridCols() const {
+        int cols = _profiles[_currentProfileIndex].gridCols;
+        return cols > 0 ? cols : 1;
+    }
+
+    int activeButtonCount() const {
+        return gridRows() * gridCols();
+    }
+
+    int buttonWidth() const {
+        int cols = gridCols();
+        return (GRID_AVAILABLE_WIDTH - ((cols - 1) * BUTTON_SPACING_X)) / cols;
+    }
+
+    int buttonHeight() const {
+        int rows = gridRows();
+        return (GRID_AVAILABLE_HEIGHT - ((rows - 1) * BUTTON_SPACING_Y)) / rows;
+    }
+
+    int gridTotalWidth() const {
+        int cols = gridCols();
+        return (cols * buttonWidth()) + ((cols - 1) * BUTTON_SPACING_X);
+    }
+
+    int gridTotalHeight() const {
+        int rows = gridRows();
+        return (rows * buttonHeight()) + ((rows - 1) * BUTTON_SPACING_Y);
+    }
+
+    int gridStartX() const {
+        return (SCREEN_WIDTH - gridTotalWidth()) / 2;
+    }
+
+    int gridStartY() const {
+        return HEADER_HEIGHT + ((GRID_AREA_HEIGHT - gridTotalHeight()) / 2);
+    }
+
+    void updateButtonLayout() {
+        int rows = gridRows();
+        int cols = gridCols();
+        int bw = buttonWidth();
+        int bh = buttonHeight();
+        int startX = gridStartX();
+        int startY = gridStartY();
+
+        for (int row = 0; row < rows; row++) {
+            for (int col = 0; col < cols; col++) {
+                int idx = row * cols + col;
+                _buttonX[idx] = startX + col * (bw + BUTTON_SPACING_X);
+                _buttonY[idx] = startY + row * (bh + BUTTON_SPACING_Y);
+            }
+        }
+    }
+
     void handleTouch(int32_t x, int32_t y) {
         uint32_t now = millis();
 
@@ -352,13 +409,13 @@ private:
             }
         }
 
-        // Release buttons that are no longer being touched
-        for (int i = 0; i < BUTTON_COUNT; i++) {
-            if (_buttonStates[i].pressed && i != buttonIndex) {
-                _buttonStates[i].pressed = false;
-                highlightButton(i, false);
+            // Release buttons that are no longer being touched
+            for (int i = 0; i < activeButtonCount(); i++) {
+                if (_buttonStates[i].pressed && i != buttonIndex) {
+                    _buttonStates[i].pressed = false;
+                    highlightButton(i, false);
+                }
             }
-        }
     }
 
     void handleTouchRelease() {
@@ -392,42 +449,57 @@ private:
             }
         }
 
-        // Release all buttons
-        for (int i = 0; i < BUTTON_COUNT; i++) {
-            if (_buttonStates[i].pressed) {
-                _buttonStates[i].pressed = false;
-                highlightButton(i, false);
+            // Release all buttons
+            for (int i = 0; i < activeButtonCount(); i++) {
+                if (_buttonStates[i].pressed) {
+                    _buttonStates[i].pressed = false;
+                    highlightButton(i, false);
+                }
             }
-        }
 
         _touchActive = false;
     }
 
     int getButtonAt(int32_t x, int32_t y) {
         // Check if within grid area
-        if (y < GRID_START_Y || y >= GRID_START_Y + GRID_TOTAL_HEIGHT) {
+        int16_t startX = gridStartX();
+        int16_t startY = gridStartY();
+        int16_t totalW = gridTotalWidth();
+        int16_t totalH = gridTotalHeight();
+        int16_t bw = buttonWidth();
+        int16_t bh = buttonHeight();
+
+        if (y < startY || y >= startY + totalH) {
             return -1;
         }
 
-        if (x < GRID_START_X || x >= GRID_START_X + GRID_TOTAL_WIDTH) {
+        if (x < startX || x >= startX + totalW) {
             return -1;
         }
 
         // Calculate row and column
-        int col = (x - GRID_START_X) / (BUTTON_WIDTH + BUTTON_SPACING_X);
-        int row = (y - GRID_START_Y) / (BUTTON_HEIGHT + BUTTON_SPACING_Y);
+        int cols = gridCols();
+        int rows = gridRows();
+        int col = (x - startX) / (bw + BUTTON_SPACING_X);
+        int row = (y - startY) / (bh + BUTTON_SPACING_Y);
 
         // Check if actually within a button (not in spacing)
-        int localX = (x - GRID_START_X) % (BUTTON_WIDTH + BUTTON_SPACING_X);
-        int localY = (y - GRID_START_Y) % (BUTTON_HEIGHT + BUTTON_SPACING_Y);
+        int localX = (x - startX) % (bw + BUTTON_SPACING_X);
+        int localY = (y - startY) % (bh + BUTTON_SPACING_Y);
 
-        if (localX >= BUTTON_WIDTH || localY >= BUTTON_HEIGHT) {
+        if (localX >= bw || localY >= bh) {
             return -1;  // In spacing area
         }
 
         // Validate bounds
-        if (row >= 0 && row < GRID_ROWS && col >= 0 && col < GRID_COLS) {
-            return row * GRID_COLS + col;
+        if (row >= 0 && row < rows && col >= 0 && col < cols) {
+            int idx = row * cols + col;
+            Profile& p = _profiles[_currentProfileIndex];
+            if (p.buttons[idx].type == MACRO_TYPE_NONE &&
+                (!p.buttons[idx].label || strlen(p.buttons[idx].label) == 0)) {
+                return -1;
+            }
+            return idx;
         }
 
         return -1;
